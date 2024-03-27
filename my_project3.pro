@@ -25,9 +25,9 @@ DEFINES += QT_DEPRECATED_WARNINGS
 CONFIG += c++11
 
 SOURCES += \
-        main.cpp \
-        mainwindow.cpp \
-    my_runing_tasks.cpp \
+    main.cpp \
+    mainwindow.cpp \
+    my_tasks.cpp \
     user_win.cpp \
     disdeal_message_win.cpp \
     group_win.cpp \
@@ -36,8 +36,8 @@ SOURCES += \
     usr_info.cpp
 
 HEADERS += \
-        mainwindow.h \
-    my_runing_tasks.h \
+    mainwindow.h \
+    my_tasks.h \
     user_win.h \
     disdeal_message_win.h \
     group_win.h \

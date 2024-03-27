@@ -1,6 +1,8 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
-#include <QSqlRecord>
+
+#include <QJsonObject>
+#include "my_tasks.h"
 MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
     ui(new Ui::MainWindow)
@@ -26,6 +28,7 @@ MainWindow::MainWindow(QWidget *parent) :
     info_win = new infomation(this);
     connect(info_win,&infomation::info_select,this,&MainWindow::info_select);
     info_win->hide();
+
     //数据库初始化
     db = QSqlDatabase::addDatabase("QSQLITE");
     db.setDatabaseName("chat.db");
@@ -44,6 +47,7 @@ MainWindow::MainWindow(QWidget *parent) :
     db.exec(sql);
     sql = QString("create table groups(group_name text,group_id text,members text);");
     db.exec(sql);
+
     //数据库显示初始化
     model = new QSqlTableModel(this,db);
     ui->tableView->setModel(model);
@@ -69,6 +73,9 @@ MainWindow::MainWindow(QWidget *parent) :
     //网络服务器初始化
     mserver.listen(QHostAddress::Any,60000);
     connect(&mserver,&QTcpServer::newConnection,this,&MainWindow::tcp_server);
+
+    //创建线程池
+    global_pool = QThreadPool::globalInstance();
 }
 
 MainWindow::~MainWindow()
@@ -78,9 +85,11 @@ MainWindow::~MainWindow()
         delete (*item);
     }
 
+
     delete ui;
     delete model;
     delete widget;
+    global_pool->waitForDone();
 }
 
 void MainWindow::on_comboBox_currentTextChanged(const QString &arg1)

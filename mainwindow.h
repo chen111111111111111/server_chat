@@ -30,6 +30,8 @@
 #include <QJsonObject>
 #include <QJsonParseError>
 
+#include <QThreadPool>
+
 
 //容器头文件
 #include <QSet>
@@ -83,6 +85,8 @@ private:
     group_win *group_w;
     disDeal_message_win *d_m_w;
     infomation *info_win;
+
+    QThreadPool *global_pool;
 
     QSqlDatabase db;       //创建数据库
     QTcpServer mserver;    //创建服务器
