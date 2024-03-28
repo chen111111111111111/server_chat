@@ -3,17 +3,33 @@
 
 #include <QJsonObject>
 #include "my_tasks.h"
+#include <QSizeGrip>
 MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
     ui(new Ui::MainWindow)
 {
     //窗口初始化
     ui->setupUi(this);
-    resize(800,600);
+    //去边窗
+    this->setProperty("canMove",true);
+    //ui->widget_title->setStyleSheet(QString());
+    this->setWindowFlags((Qt::FramelessWindowHint | Qt::WindowSystemMenuHint | Qt::WindowMinMaxButtonsHint));
+    //添加右下角伸缩窗口控件
+    QSizeGrip *grip = new QSizeGrip(this);
+    static_cast<QHBoxLayout*>(this->centralWidget()->layout())->addWidget(grip,0,Qt::AlignBottom|Qt::AlignRight);
+    ui->widget_title->setProperty("form","title");
+    ui->widget_title->setProperty("nav","top");
+    init_current_style();
+
+    IconHelper::Instance()->setIcon(ui->pushButton_minWin, QChar(0xF068));
+    IconHelper::Instance()->setIcon(ui->pushButton_maxWin, QChar(0xF2D0));
+    IconHelper::Instance()->setIcon(ui->pushButton_closeWin, QChar(0xF00d));
+
+    setGeometry(500,250,800,600);
     setWindowTitle("聊天服务器");
     user_w= new user_win(this) ;
     widget = user_w;
-    widget->setGeometry(0,20,800,200);
+    widget->setGeometry(0,50,800,200);
     connect(user_w,&user_win::add_send,this,&MainWindow::add_usr);
     connect(user_w,&user_win::select_send,this,&MainWindow::select_usr);
     connect(user_w,&user_win::update_send,this,&MainWindow::update_usr);
@@ -98,7 +114,7 @@ void MainWindow::on_comboBox_currentTextChanged(const QString &arg1)
     if(arg1 == "用户管理")
     {
         widget = user_w;
-        widget ->setGeometry(0,20,800,200);
+        widget ->setGeometry(0,50,800,200);
         widget->show();
         model->setTable("user");
         model->select();
@@ -106,7 +122,7 @@ void MainWindow::on_comboBox_currentTextChanged(const QString &arg1)
     else if(arg1 == "未处理消息管理")
     {
         widget = d_m_w;
-        widget ->setGeometry(0,20,800,200);
+        widget ->setGeometry(0,50,800,200);
         widget->show();
         //connect(dynamic_cast<user_win*>(widget),&user_win::add_send,this,&MainWindow::add_usr);
         model->setTable("messages");
@@ -115,7 +131,7 @@ void MainWindow::on_comboBox_currentTextChanged(const QString &arg1)
     else if(arg1 == "群聊管理")
     {
         widget = group_w;
-        widget ->setGeometry(0,20,800,200);
+        widget ->setGeometry(0,50,800,200);
         widget->show();
         model->setTable("groups");
         model->select();
@@ -123,7 +139,7 @@ void MainWindow::on_comboBox_currentTextChanged(const QString &arg1)
     else if(arg1 == "消息历史记录")
     {
         widget = info_win;
-        widget ->setGeometry(0,20,800,200);
+        widget ->setGeometry(0,50,800,200);
         widget->show();
         model->setTable("infomation");
         model->select();
@@ -131,7 +147,7 @@ void MainWindow::on_comboBox_currentTextChanged(const QString &arg1)
     else if(arg1 =="用户关系")
     {
         widget = relation_win;
-        widget ->setGeometry(0,20,800,200);
+        widget ->setGeometry(0,50,800,200);
         widget->show();
         model->setTable("relations");
         model->select();
@@ -168,511 +184,35 @@ void MainWindow::recvData()
     QJsonObject obj = doc.object();
     if(obj.contains("login"))                                       //登陆操作
     {
-        int a = ui->comboBox->currentIndex();   //记录当前界面，用以复原
-        ui->comboBox->setCurrentIndex(0);
-        QJsonObject obj_message = obj.value("login").toObject();
-        QString usr = obj_message.value("usr").toString();
-        QString pwd = obj_message.value("pwd").toString();
-        qDebug()<<usr<<" "<<pwd;
-        QString table = model->tableName();
-        model->setTable("user");
-        model->setFilter(QString("usr = '%1' and pwd = '%2'").arg(usr).arg(pwd));
-        model->select();
-        if(model->rowCount()>0)
-        {
-            QJsonObject obj;
-            obj.insert("result","ok");
-            obj.insert("name",model->record(0).value("name").toString());
-            QJsonDocument doc(obj);
-            msocket->write(doc.toJson());
-            usr_info *usr1 = new usr_info;
-            usr1->Usr = usr;
-            usr1->msocket = msocket;
-            tree.insert(usr1);
-        }
-        else
-        {
-            QJsonObject obj;
-            obj.insert("result","failed");
-            QJsonDocument doc(obj);
-            msocket->write(doc.toJson());
-        }
-        model->setTable(table);
-        model->setFilter("");
-        model->select();
-        ui->comboBox->setCurrentIndex(a);
+        usr_login(obj);
     }
     else if(obj.contains("sendMessageToFriend"))           //好友消息
     {
-        QJsonObject obj1 = obj.value("sendMessageToFriend").toObject();
-        QString text = obj1.value("text").toString();
-        QString recv_usr = obj1.value("recv_usr").toString();
-        QString recv_name = obj1.value("recv_name").toString();
-        QString send_usr = obj1.value("send_usr").toString();
-        QString send_name = obj1.value("send_name").toString();
-        QString time = QDate::currentDate().toString("yyyy-MM-dd");
-        time.append(QTime::currentTime().toString(" hh:mm:ss"));
-        QSet<usr_info*>::iterator item;
-        for (item = tree.begin(); item != tree.end();item++) {
-            if((*item)->Usr ==recv_usr)
-            {
-                //发送好友消息
-                QJsonObject obj;
-                obj.insert("send_usr",send_usr);
-                obj.insert("send_name",send_name);
-                obj.insert("type","friend");
-                obj.insert("text",text);
-                obj.insert("time",time);
-                QJsonObject obj_all ;
-                obj_all.insert("send_message",obj);
-                QJsonDocument doc(obj_all);
-                (*item)->msocket->write(doc.toJson());
-
-                //存入记录
-                model->setTable("infomation");
-                QSqlRecord record = model->record(0);
-                record.setValue("send_name",send_name);
-                record.setValue("send_usr",send_usr);
-                record.setValue("recv_usr",recv_usr);
-                record.setValue("text",text);
-                record.setValue("recv_name",recv_name);
-                record.setValue("time",time);
-                record.setValue("type","friend");
-                model->insertRecord(0,record);
-                break;
-            }
-        }
-
-        //如果好友不在线，存入未发消息队列
-        if(item == tree.end())
-        {
-            QString table = model->tableName();
-            model->setTable("messages");
-            QSqlRecord record = model->record(0);
-            record.setValue("send_name",send_name);
-            record.setValue("send_usr",send_usr);
-            record.setValue("recv_usr",recv_usr);
-            record.setValue("recv_name",recv_name);
-            record.setValue("time",time);
-            record.setValue("text",text);
-            record.setValue("type","friend");
-            model->insertRecord(0,record);
-        }
+        MtoFriend(obj);
     }
     else if(obj.contains("sendMessageToGroup"))           //群消息
     {
-        QJsonObject obj1 = obj.value("sendMessageToGroup").toObject();
-        QString recv_name = obj1.value("recv_name").toString();
-        QString recv_usr = obj1.value("recv_usr").toString();
-        QString send_name = obj1.value("send_name").toString();
-        QString send_usr = obj1.value("send_usr").toString();
-        QString text = obj1.value("text").toString();
-        QString table = model->tableName();
-        model->setTable("relations");
-        model->setFilter(QString("usr1 = '%1'").arg(recv_usr));
-        model->select();
-        qDebug()<<recv_usr;
-        int n = model->rowCount();
-        qDebug()<<"当前有"<<n<<"人";
-        for (int i=0 ;i<n;i++)
-        {
-            QSqlRecord record = model->record(i);
-            QString recv_name1 = record.value("name2").toString();
-            QString recv_usr1 = record.value("usr2").toString();
-            QString type = record.value("type").toString();
-            qDebug()<<recv_name1<<" "<<recv_usr1<<" "<<type;
-            if(send_usr == recv_usr1)continue;
-            QSet<usr_info*>::iterator item ;
-            for (item= tree.begin(); item != tree.end(); item++)
-            {
-                qDebug()<<(*item)->Usr;
-                if((*item)->Usr == recv_usr1)                                    //当前在线
-                {
-                    QString time = QDate::currentDate().toString("yyyy-MM-dd");
-                    time.append(QTime::currentTime().toString(" hh:mm:ss"));
-                    QJsonObject obj2;
-                    obj2.insert("send_name",recv_name);
-                    obj2.insert("send_usr",recv_usr);
-                    obj2.insert("old_send_name",send_name);
-                    obj2.insert("old_send_usr",send_usr);
-                    obj2.insert("recv_name",recv_name1);
-                    obj2.insert("recv_usr",recv_usr1);
-                    obj2.insert("type",type);
-                    obj2.insert("text",text);
-                    obj2.insert("time",time);
-                    QJsonObject all_obj2;
-                    all_obj2.insert("send_message",obj2);
-                    QJsonDocument doc(all_obj2);
-                    (*item)->msocket->write(doc.toJson());
-                    model->setTable("infomation");
-                    model->setFilter("");
-                    model->select();
-                    QSqlRecord record = model->record(0);
-                    record.setValue("send_name",recv_name);
-                    record.setValue("send_usr",recv_usr);
-                    record.setValue("recv_name",recv_name1);
-                    record.setValue("recv_usr",recv_usr1);
-                    record.setValue("type",type);
-                    record.setValue("old_send_name",send_name);
-                    record.setValue("old_send_usr",send_usr);
-                    record.setValue("text",text);
-                    record.setValue("time",time);
-                    model->insertRecord(0,record);
-                    break;
-                }
-            }
-            if(item == tree.end())                                          //当前不在线
-            {
-                QString time = QDate::currentDate().toString("yyyy-MM-dd");
-                time.append(QTime::currentTime().toString(" hh:mm:ss"));
-
-                model->setTable("messages");
-                model->setFilter("");
-                model->select();
-                QSqlRecord record = model->record(0);
-                record.setValue("send_name",recv_name);
-                record.setValue("send_usr",recv_usr);
-                record.setValue("recv_name",recv_name1);
-                record.setValue("recv_usr",recv_usr1);
-                record.setValue("type",type);
-                record.setValue("old_send_name",send_name);
-                record.setValue("old_send_usr",send_usr);
-                record.setValue("text",text);
-                record.setValue("time",time);
-                model->insertRecord(0,record);
-                model->setTable("relations");
-                model->setFilter(QString(QString("usr1 = '%1'").arg(recv_usr)));
-                model->select();
-            }
-        }
-        model->setTable(table);
-        model->setFilter("");
-        model->select();
+        MtoGroup(obj);
     }
     else if(obj.contains("switch"))
     {
-        //开始发送好友关系数据
-        QString usr = obj.value("usr").toString();
-        QString tabel = model->tableName();
-        model->setTable("relations");
-        model->setFilter(QString(" usr1= '%1' or usr2 = '%1'").arg(usr));
-        model->select();
-        QJsonArray arry;
-        qDebug()<<model->rowCount();
-        for (int i =0; i<model->rowCount();i++) {
-            QSqlRecord record = model->record(i);
-            if(record.value(1).toString() == usr)
-            {
-                QJsonObject obj1;
-                obj1.insert("name",record.value(2).toString());
-                obj1.insert("usr",record.value(3).toString());
-                obj1.insert("type",record.value(4).toString());
-                arry.insert(i,obj1);
-            }
-            else {
-                QJsonObject obj1;
-                obj1.insert("name",record.value(0).toString());
-                obj1.insert("usr",record.value(1).toString());
-                obj1.insert("type",record.value(4).toString());
-                arry.insert(i,obj1);
-            }
-            qDebug()<<i;
-        }
-        QJsonObject send_obj;
-        send_obj.insert("relations",arry);
-        QJsonDocument doc(send_obj);
-        QByteArray send_buf = doc.toJson();
-        msocket->write(send_buf);
-        model->setTable(tabel);
-        model->setFilter("");
-        model->select();
+       switch_init(obj);
     }
     else if(obj.contains("ready_recv"))                 //将离线时消息发送给刚登陆的客户
     {
-        qDebug()<<"发送离线消息";
-        QString usr  = obj.value("ready_recv").toString();
-        QString name = obj.value("name").toString();
-        QString table = model->tableName();
-        model->setTable("messages");
-        model->setFilter(QString("recv_usr = '%1'").arg(usr));
-        model->select();
-        int n = model->rowCount();
-        qDebug()<<n;
-        if(n >0)
-        {
-            QJsonArray arry;
-            for (int i= 0; i<n;i++)
-            {
-                QSqlRecord record = model->record(0);
-                QString send_name = record.value("send_name").toString();
-                QString send_usr = record.value("send_usr").toString();
-                QString text = record.value("text").toString();
-                QString time = record.value("time").toString();
-                QString type = record.value("type").toString();
-                QString old_send_usr;
-                QString old_send_name;
-                if(type == "group")
-                {
-                    old_send_name = record.value("old_send_name").toString();
-                    old_send_usr = record.value("old_send_usr").toString();
-                }
-
-                QJsonObject obj;
-                obj.insert("send_name",send_name);
-                obj.insert("send_usr",send_usr);
-                obj.insert("text",text);
-                obj.insert("time",time);
-                obj.insert("type",type);
-                if(type == "group")
-                {
-                    obj.insert("old_send_usr",old_send_usr);
-                    obj.insert("old_send_name",old_send_name);
-                }
-
-                arry.insert(i,obj);
-                model->removeRow(0);
-
-                //存入记录
-                model->setTable("infomation");
-                QSqlRecord record1 = model->record(0);
-                record1.setValue("send_name",send_name);
-                record1.setValue("send_usr",send_usr);
-                record1.setValue("recv_usr",usr);
-                record1.setValue("text",text);
-                record1.setValue("recv_name",name);
-                record1.setValue("time",time);
-                record1.setValue("type",type);
-                if(type =="group")
-                {
-                    record1.setValue("old_send_usr",old_send_usr);
-                    record1.setValue("old_send_name",old_send_name);
-                }
-                model->insertRecord(0,record1);
-                model->setTable("messages");
-                model->setFilter(QString("recv_usr = '%1'").arg(usr));
-                model->select();
-            }
-            QJsonObject obj_all;
-            obj_all.insert("out_line_text",arry);
-            QJsonDocument doc(obj_all);
-            msocket->write(doc.toJson());
-        }
-
-        model->setFilter("");
-        model->select();
-        model->setTable(table);
-        model->select();
+        offline_data(obj);
     }
     else if(obj.contains("add_friend"))                     //添加好友或者群聊
     {
-        QJsonObject obj1 = obj.value("add_friend").toObject();
-        QString send_name = obj1.value("send_name").toString();
-        QString send_usr = obj1.value("send_usr").toString();
-        QString recv_usr = obj1.value("recv_usr").toString();
-        qDebug()<<recv_usr;
-        QString recv_name;
-        QString table = model->tableName();
-        //判断两人是否已经有好友关系
-        model->setTable("relations");
-        model->setFilter(QString("usr1 = '%1' and usr2 = '%2'").arg(send_usr).arg(recv_usr));
-        model->select();
-        //当前已经是好友
-        if(model->rowCount()>0)return ;
-        model->setFilter(QString("usr1 = '%2' and usr2 = '%1'").arg(send_usr).arg(recv_usr));
-        model->select();
-        if(model->rowCount()>0)return ;
-
-        model->setTable("user");
-        model->setFilter(QString("usr = '%1'").arg(recv_usr));
-        model->select();
-        int n = model->rowCount();
-        if(n> 0)
-        {
-            QSqlRecord record = model->record(0);
-            recv_name = record.value("name").toString();
-            qDebug()<<recv_name;
-            model->setTable("relations");
-            model->setFilter("");
-            model->select();
-            QSqlRecord record1 = model->record(0);
-            record1.setValue("name1",send_name);
-            record1.setValue("usr1",send_usr);
-            record1.setValue("usr2",recv_usr);
-            record1.setValue("name2",recv_name);
-            record1.setValue("type","friend");
-            model->insertRecord(0,record1);
-            QJsonObject obj2;
-            obj2.insert("name",recv_name);
-            obj2.insert("usr",recv_usr);
-            obj2.insert("type","friend");
-            QJsonObject obj3;
-            obj3.insert("name",send_name);
-            obj3.insert("usr",send_usr);
-            obj3.insert("type","friend");
-            QJsonArray arr;
-            arr.insert(0,obj2);
-            QJsonArray arr1;
-            arr1.insert(0,obj3);
-            QJsonObject all_obj;
-            all_obj.insert("relations",arr);
-            QJsonDocument doc(all_obj);
-            QJsonObject all_obj2;
-            all_obj2.insert("relations",arr1);
-            QJsonDocument doc2(all_obj2);
-            //查询对方是否在线
-            for (QSet<usr_info*>::iterator item = tree.begin(); item != tree.end(); item++) {
-                if((*item)->Usr == recv_usr)
-                {
-                    (*item)->msocket->write(doc2.toJson());
-                    qDebug()<<"对方在线";
-                    break;
-                }
-            }
-            msocket->write(doc.toJson());
-        }
-        else
-        {
-            //判断是否已加入群聊
-            model->setTable("relations");
-            model->setFilter(QString("usr1 = '%1' and usr2 = '%2'").arg(recv_usr).arg(send_usr));
-            model->select();
-            if(model->rowCount()>0)return ;         //当前已经加入群聊，直接返回。
-
-            model->setTable("groups");
-            model->setFilter(QString ("group_id = '%1'").arg(recv_usr));
-            model->select();
-            n = model->rowCount();
-            //当前加入的群存在
-            if(n> 0 )
-            {
-                QSqlRecord record = model->record(0);
-                int n = record.value("members").toInt();
-                n++;
-                record.setValue("members",n);
-                model->setRecord(0,record);
-                recv_name =record.value("group_name").toString();
-                model->setTable("relations");
-                model->setFilter("");
-                model->select();
-                QSqlRecord record1 = model->record(0);
-                record1.setValue("name1",recv_name);
-                record1.setValue("usr1",recv_usr);
-                record1.setValue("name2",send_name);
-                record1.setValue("usr2",send_usr);
-                record1.setValue("type","group");
-                model->insertRecord(0,record1);
-                QJsonObject obj2;
-                obj2.insert("name",recv_name);
-                obj2.insert("usr",recv_usr);
-                obj2.insert("type","group");
-                QJsonArray arr;
-                arr.insert(0,obj2);
-                QJsonObject all_obj;
-                all_obj.insert("relations",arr);
-                QJsonDocument doc(all_obj);
-                msocket->write(doc.toJson());
-            }
-            else        //当前群不存在
-            {
-                QJsonObject obj2;
-                obj2.insert("add_failed",recv_usr);
-                QJsonDocument doc(obj2);
-                msocket->write(doc.toJson());
-            }
-        }
-        model->setTable(table);
-        model->setFilter("");
-        model->select();
+        add_relation(obj);
     }
     else if(obj.contains("create_group"))                       //创建群聊
     {
-        QJsonObject obj1 = obj.value("create_group").toObject();
-        QString group_name = obj1.value("group_name").toString();
-        QString group_id = obj1.value("group_id").toString();
-        QString send_name = obj1.value("send_name").toString();
-        QString send_usr = obj1.value("send_usr").toString();
-        QString table = model->tableName();
-        model->setTable("groups");
-        model->setFilter(QString("group_id = '%1'").arg(group_id));
-        model->select();
-        int n = model->rowCount();
-        if(n<1)
-        {
-            QSqlRecord record = model->record(0);
-            record.setValue("group_name",group_name);
-            record.setValue("group_id",group_id);
-            record.setValue("members",1);
-            model->insertRecord(0,record);
-            model->setTable("relations");
-            model->setFilter("");
-            model->select();
-            QSqlRecord record1 = model->record(0);
-            record1.setValue("name1",group_name);
-            record1.setValue("usr1",group_id);
-            record1.setValue("name2",send_name);
-            record1.setValue("usr2",send_usr);
-            record1.setValue("type","group");
-            model->insertRecord(0,record1);
-            QJsonObject obj2;
-            obj2.insert("name",group_name);
-            obj2.insert("usr",group_id);
-            obj2.insert("type","group");
-            QJsonArray arr;
-            arr.insert(0,obj2);
-            QJsonObject all_obj;
-            all_obj.insert("relations",arr);
-            QJsonDocument doc(all_obj);
-            msocket->write(doc.toJson());
-        }
-        model->setTable(table);
-        model->setFilter("");
-        model->select();
+        create_group(obj);
     }
     else if(obj.contains("register_info"))         //注册用户
     {
-        QJsonObject obj1 = obj.value("register_info").toObject();
-        QString name = obj1.value("name").toString();
-        QString usr = obj1.value("usr").toString();
-        QString pwd = obj1.value("pwd").toString();
-        model->setTable("user");
-        model->setFilter(QString("usr = '%1'").arg(usr));
-        model->select();
-        if(model->rowCount()>0)
-        {
-            QJsonObject obj2;
-            obj2.insert("register_result","no");
-            QJsonDocument doc(obj2);
-            msocket->write(doc.toJson());
-        }
-        else
-        {
-            QSqlRecord record =  model->record(0);
-            record.setValue("name",name);
-            record.setValue("usr",usr);
-            record.setValue("pwd",pwd);
-            model->insertRecord(0,record);
-            model->setTable("relations");
-            model->setFilter("");
-            model->select();
-            QSqlRecord record1 =  model->record(0);
-            record1.setValue("name1","系统聊天室");
-            record1.setValue("usr1","00000001");
-            record1.setValue("name2",name);
-            record1.setValue("usr2",usr);
-            record1.setValue("type","group");
-            model->insertRecord(0,record1);
-            model->setTable("groups");
-            model->setFilter(QString("group_id = '00000001'"));
-            model->select();
-            QSqlRecord record2 =  model->record(0);
-            int n = record2.value("members").toInt()+1;
-            record2.setValue("members",n);
-            model->setRecord(0,record2);
-            QJsonObject obj2;
-            obj2.insert("register_result","yes");
-            QJsonDocument doc(obj2);
-            msocket->write(doc.toJson());
-        }
+        register_usr(obj);
     }
 }
 
@@ -860,6 +400,573 @@ void MainWindow::relation_select(QString sender, QString recver)
     model->select();
 }
 
+void MainWindow::usr_login(QJsonObject obj)
+{
+    int a = ui->comboBox->currentIndex();   //记录当前界面，用以复原
+    ui->comboBox->setCurrentIndex(0);
+    QJsonObject obj_message = obj.value("login").toObject();
+    QString usr = obj_message.value("usr").toString();
+    QString pwd = obj_message.value("pwd").toString();
+    qDebug()<<usr<<" "<<pwd;
+    QString table = model->tableName();
+    model->setTable("user");
+    model->setFilter(QString("usr = '%1' and pwd = '%2'").arg(usr).arg(pwd));
+    model->select();
+    if(model->rowCount()>0)
+    {
+
+        QJsonObject obj;
+        obj.insert("result","ok");
+        obj.insert("name",model->record(0).value("name").toString());
+        QJsonDocument doc(obj);
+        qDebug()<<obj;
+        msocket->write(doc.toJson());
+        qDebug()<<obj;
+        usr_info *usr1 = new usr_info;
+        usr1->Usr = usr;
+        usr1->msocket = msocket;
+
+        tree.insert(usr1);
+    }
+    else
+    {
+        qDebug()<<"不匹配";
+        QJsonObject obj;
+        obj.insert("result","failed");
+        QJsonDocument doc(obj);
+        msocket->write(doc.toJson());
+    }
+    model->setTable(table);
+    model->setFilter("");
+    model->select();
+    ui->comboBox->setCurrentIndex(a);
+}
+
+void MainWindow::MtoFriend(QJsonObject obj)
+{
+    QJsonObject obj1 = obj.value("sendMessageToFriend").toObject();
+    QString text = obj1.value("text").toString();
+    QString recv_usr = obj1.value("recv_usr").toString();
+    QString recv_name = obj1.value("recv_name").toString();
+    QString send_usr = obj1.value("send_usr").toString();
+    QString send_name = obj1.value("send_name").toString();
+    QString time = QDate::currentDate().toString("yyyy-MM-dd");
+    time.append(QTime::currentTime().toString(" hh:mm:ss"));
+    QSet<usr_info*>::iterator item;
+    for (item = tree.begin(); item != tree.end();item++) {
+        if((*item)->Usr ==recv_usr)
+        {
+            //发送好友消息
+            QJsonObject obj;
+            obj.insert("send_usr",send_usr);
+            obj.insert("send_name",send_name);
+            obj.insert("type","friend");
+            obj.insert("text",text);
+            obj.insert("time",time);
+            QJsonObject obj_all ;
+            obj_all.insert("send_message",obj);
+            QJsonDocument doc(obj_all);
+            (*item)->msocket->write(doc.toJson());
+
+            //存入记录
+            model->setTable("infomation");
+            QSqlRecord record = model->record(0);
+            record.setValue("send_name",send_name);
+            record.setValue("send_usr",send_usr);
+            record.setValue("recv_usr",recv_usr);
+            record.setValue("text",text);
+            record.setValue("recv_name",recv_name);
+            record.setValue("time",time);
+            record.setValue("type","friend");
+            model->insertRecord(0,record);
+            break;
+        }
+    }
+
+    //如果好友不在线，存入未发消息队列
+    if(item == tree.end())
+    {
+        QString table = model->tableName();
+        model->setTable("messages");
+        QSqlRecord record = model->record(0);
+        record.setValue("send_name",send_name);
+        record.setValue("send_usr",send_usr);
+        record.setValue("recv_usr",recv_usr);
+        record.setValue("recv_name",recv_name);
+        record.setValue("time",time);
+        record.setValue("text",text);
+        record.setValue("type","friend");
+        model->insertRecord(0,record);
+    }
+}
 
 
+void MainWindow::MtoGroup(QJsonObject obj)
+{
+    QJsonObject obj1 = obj.value("sendMessageToGroup").toObject();
+    QString recv_name = obj1.value("recv_name").toString();
+    QString recv_usr = obj1.value("recv_usr").toString();
+    QString send_name = obj1.value("send_name").toString();
+    QString send_usr = obj1.value("send_usr").toString();
+    QString text = obj1.value("text").toString();
+    QString table = model->tableName();
+    model->setTable("relations");
+    model->setFilter(QString("usr1 = '%1'").arg(recv_usr));
+    model->select();
+    qDebug()<<recv_usr;
+    int n = model->rowCount();
+    qDebug()<<"当前有"<<n<<"人";
+    for (int i=0 ;i<n;i++)
+    {
+        QSqlRecord record = model->record(i);
+        QString recv_name1 = record.value("name2").toString();
+        QString recv_usr1 = record.value("usr2").toString();
+        QString type = record.value("type").toString();
+        qDebug()<<recv_name1<<" "<<recv_usr1<<" "<<type;
+        if(send_usr == recv_usr1)continue;
+        QSet<usr_info*>::iterator item ;
+        for (item= tree.begin(); item != tree.end(); item++)
+        {
+            qDebug()<<(*item)->Usr;
+            if((*item)->Usr == recv_usr1)                                    //当前在线
+            {
+                QString time = QDate::currentDate().toString("yyyy-MM-dd");
+                time.append(QTime::currentTime().toString(" hh:mm:ss"));
+                QJsonObject obj2;
+                obj2.insert("send_name",recv_name);
+                obj2.insert("send_usr",recv_usr);
+                obj2.insert("old_send_name",send_name);
+                obj2.insert("old_send_usr",send_usr);
+                obj2.insert("recv_name",recv_name1);
+                obj2.insert("recv_usr",recv_usr1);
+                obj2.insert("type",type);
+                obj2.insert("text",text);
+                obj2.insert("time",time);
+                QJsonObject all_obj2;
+                all_obj2.insert("send_message",obj2);
+                QJsonDocument doc(all_obj2);
+                (*item)->msocket->write(doc.toJson());
+                model->setTable("infomation");
+                model->setFilter("");
+                model->select();
+                QSqlRecord record = model->record(0);
+                record.setValue("send_name",recv_name);
+                record.setValue("send_usr",recv_usr);
+                record.setValue("recv_name",recv_name1);
+                record.setValue("recv_usr",recv_usr1);
+                record.setValue("type",type);
+                record.setValue("old_send_name",send_name);
+                record.setValue("old_send_usr",send_usr);
+                record.setValue("text",text);
+                record.setValue("time",time);
+                model->insertRecord(0,record);
+                break;
+            }
+        }
+        if(item == tree.end())                                          //当前不在线
+        {
+            QString time = QDate::currentDate().toString("yyyy-MM-dd");
+            time.append(QTime::currentTime().toString(" hh:mm:ss"));
 
+            model->setTable("messages");
+            model->setFilter("");
+            model->select();
+            QSqlRecord record = model->record(0);
+            record.setValue("send_name",recv_name);
+            record.setValue("send_usr",recv_usr);
+            record.setValue("recv_name",recv_name1);
+            record.setValue("recv_usr",recv_usr1);
+            record.setValue("type",type);
+            record.setValue("old_send_name",send_name);
+            record.setValue("old_send_usr",send_usr);
+            record.setValue("text",text);
+            record.setValue("time",time);
+            model->insertRecord(0,record);
+            model->setTable("relations");
+            model->setFilter(QString(QString("usr1 = '%1'").arg(recv_usr)));
+            model->select();
+        }
+    }
+    model->setTable(table);
+    model->setFilter("");
+    model->select();
+}
+
+void MainWindow::switch_init(QJsonObject obj)
+{
+    //开始发送好友关系数据
+    QString usr = obj.value("usr").toString();
+    QString tabel = model->tableName();
+    model->setTable("relations");
+    model->setFilter(QString(" usr1= '%1' or usr2 = '%1'").arg(usr));
+    model->select();
+    QJsonArray arry;
+    qDebug()<<model->rowCount();
+    for (int i =0; i<model->rowCount();i++) {
+        QSqlRecord record = model->record(i);
+        if(record.value(1).toString() == usr)
+        {
+            QJsonObject obj1;
+            obj1.insert("name",record.value(2).toString());
+            obj1.insert("usr",record.value(3).toString());
+            obj1.insert("type",record.value(4).toString());
+            arry.insert(i,obj1);
+        }
+        else {
+            QJsonObject obj1;
+            obj1.insert("name",record.value(0).toString());
+            obj1.insert("usr",record.value(1).toString());
+            obj1.insert("type",record.value(4).toString());
+            arry.insert(i,obj1);
+        }
+        qDebug()<<i;
+    }
+    QJsonObject send_obj;
+    send_obj.insert("relations",arry);
+    QJsonDocument doc(send_obj);
+    QByteArray send_buf = doc.toJson();
+    msocket->write(send_buf);
+    model->setTable(tabel);
+    model->setFilter("");
+    model->select();
+}
+
+void MainWindow::offline_data(QJsonObject obj)
+{
+    qDebug()<<"发送离线消息";
+    QString usr  = obj.value("ready_recv").toString();
+    QString name = obj.value("name").toString();
+    QString table = model->tableName();
+    model->setTable("messages");
+    model->setFilter(QString("recv_usr = '%1'").arg(usr));
+    model->select();
+    int n = model->rowCount();
+    qDebug()<<n;
+    if(n >0)
+    {
+        QJsonArray arry;
+        for (int i= 0; i<n;i++)
+        {
+            QSqlRecord record = model->record(0);
+            QString send_name = record.value("send_name").toString();
+            QString send_usr = record.value("send_usr").toString();
+            QString text = record.value("text").toString();
+            QString time = record.value("time").toString();
+            QString type = record.value("type").toString();
+            QString old_send_usr;
+            QString old_send_name;
+            if(type == "group")
+            {
+                old_send_name = record.value("old_send_name").toString();
+                old_send_usr = record.value("old_send_usr").toString();
+            }
+
+            QJsonObject obj;
+            obj.insert("send_name",send_name);
+            obj.insert("send_usr",send_usr);
+            obj.insert("text",text);
+            obj.insert("time",time);
+            obj.insert("type",type);
+            if(type == "group")
+            {
+                obj.insert("old_send_usr",old_send_usr);
+                obj.insert("old_send_name",old_send_name);
+            }
+
+            arry.insert(i,obj);
+            model->removeRow(0);
+
+            //存入记录
+            model->setTable("infomation");
+            QSqlRecord record1 = model->record(0);
+            record1.setValue("send_name",send_name);
+            record1.setValue("send_usr",send_usr);
+            record1.setValue("recv_usr",usr);
+            record1.setValue("text",text);
+            record1.setValue("recv_name",name);
+            record1.setValue("time",time);
+            record1.setValue("type",type);
+            if(type =="group")
+            {
+                record1.setValue("old_send_usr",old_send_usr);
+                record1.setValue("old_send_name",old_send_name);
+            }
+            model->insertRecord(0,record1);
+            model->setTable("messages");
+            model->setFilter(QString("recv_usr = '%1'").arg(usr));
+            model->select();
+        }
+        QJsonObject obj_all;
+        obj_all.insert("out_line_text",arry);
+        QJsonDocument doc(obj_all);
+        msocket->write(doc.toJson());
+    }
+    model->setTable(table);
+    model->setFilter("");
+    model->select();
+}
+
+void MainWindow::add_relation(QJsonObject obj)
+{
+    QJsonObject obj1 = obj.value("add_friend").toObject();
+    QString send_name = obj1.value("send_name").toString();
+    QString send_usr = obj1.value("send_usr").toString();
+    QString recv_usr = obj1.value("recv_usr").toString();
+    qDebug()<<recv_usr;
+    QString recv_name;
+    QString table = model->tableName();
+    //判断两人是否已经有好友关系
+    model->setTable("relations");
+    model->setFilter(QString("usr1 = '%1' and usr2 = '%2'").arg(send_usr).arg(recv_usr));
+    model->select();
+    //当前已经是好友
+    if(model->rowCount()>0)return ;
+    model->setFilter(QString("usr1 = '%2' and usr2 = '%1'").arg(send_usr).arg(recv_usr));
+    model->select();
+    if(model->rowCount()>0)return ;
+
+    model->setTable("user");
+    model->setFilter(QString("usr = '%1'").arg(recv_usr));
+    model->select();
+    int n = model->rowCount();
+    if(n> 0)
+    {
+        QSqlRecord record = model->record(0);
+        recv_name = record.value("name").toString();
+        qDebug()<<recv_name;
+        model->setTable("relations");
+        model->setFilter("");
+        model->select();
+        QSqlRecord record1 = model->record(0);
+        record1.setValue("name1",send_name);
+        record1.setValue("usr1",send_usr);
+        record1.setValue("usr2",recv_usr);
+        record1.setValue("name2",recv_name);
+        record1.setValue("type","friend");
+        model->insertRecord(0,record1);
+        QJsonObject obj2;
+        obj2.insert("name",recv_name);
+        obj2.insert("usr",recv_usr);
+        obj2.insert("type","friend");
+        QJsonObject obj3;
+        obj3.insert("name",send_name);
+        obj3.insert("usr",send_usr);
+        obj3.insert("type","friend");
+        QJsonArray arr;
+        arr.insert(0,obj2);
+        QJsonArray arr1;
+        arr1.insert(0,obj3);
+        QJsonObject all_obj;
+        all_obj.insert("relations",arr);
+        QJsonDocument doc(all_obj);
+        QJsonObject all_obj2;
+        all_obj2.insert("relations",arr1);
+        QJsonDocument doc2(all_obj2);
+        //查询对方是否在线
+        for (QSet<usr_info*>::iterator item = tree.begin(); item != tree.end(); item++) {
+            if((*item)->Usr == recv_usr)
+            {
+                (*item)->msocket->write(doc2.toJson());
+                qDebug()<<"对方在线";
+                break;
+            }
+        }
+        msocket->write(doc.toJson());
+    }
+    else
+    {
+        //判断是否已加入群聊
+        model->setTable("relations");
+        model->setFilter(QString("usr1 = '%1' and usr2 = '%2'").arg(recv_usr).arg(send_usr));
+        model->select();
+        if(model->rowCount()>0)return ;         //当前已经加入群聊，直接返回。
+
+        model->setTable("groups");
+        model->setFilter(QString ("group_id = '%1'").arg(recv_usr));
+        model->select();
+        n = model->rowCount();
+        //当前加入的群存在
+        if(n> 0 )
+        {
+            QSqlRecord record = model->record(0);
+            int n = record.value("members").toInt();
+            n++;
+            record.setValue("members",n);
+            model->setRecord(0,record);
+            recv_name =record.value("group_name").toString();
+            model->setTable("relations");
+            model->setFilter("");
+            model->select();
+            QSqlRecord record1 = model->record(0);
+            record1.setValue("name1",recv_name);
+            record1.setValue("usr1",recv_usr);
+            record1.setValue("name2",send_name);
+            record1.setValue("usr2",send_usr);
+            record1.setValue("type","group");
+            model->insertRecord(0,record1);
+            QJsonObject obj2;
+            obj2.insert("name",recv_name);
+            obj2.insert("usr",recv_usr);
+            obj2.insert("type","group");
+            QJsonArray arr;
+            arr.insert(0,obj2);
+            QJsonObject all_obj;
+            all_obj.insert("relations",arr);
+            QJsonDocument doc(all_obj);
+            msocket->write(doc.toJson());
+        }
+        else        //当前群不存在
+        {
+            QJsonObject obj2;
+            obj2.insert("add_failed",recv_usr);
+            QJsonDocument doc(obj2);
+            msocket->write(doc.toJson());
+        }
+    }
+    model->setTable(table);
+    model->setFilter("");
+    model->select();
+}
+
+void MainWindow::create_group(QJsonObject obj)
+{
+    QJsonObject obj1 = obj.value("create_group").toObject();
+    QString group_name = obj1.value("group_name").toString();
+    QString group_id = obj1.value("group_id").toString();
+    QString send_name = obj1.value("send_name").toString();
+    QString send_usr = obj1.value("send_usr").toString();
+    QString table = model->tableName();
+    model->setTable("groups");
+    model->setFilter(QString("group_id = '%1'").arg(group_id));
+    model->select();
+    int n = model->rowCount();
+    if(n<1)
+    {
+        QSqlRecord record = model->record(0);
+        record.setValue("group_name",group_name);
+        record.setValue("group_id",group_id);
+        record.setValue("members",1);
+        model->insertRecord(0,record);
+        model->setTable("relations");
+        model->setFilter("");
+        model->select();
+        QSqlRecord record1 = model->record(0);
+        record1.setValue("name1",group_name);
+        record1.setValue("usr1",group_id);
+        record1.setValue("name2",send_name);
+        record1.setValue("usr2",send_usr);
+        record1.setValue("type","group");
+        model->insertRecord(0,record1);
+        QJsonObject obj2;
+        obj2.insert("name",group_name);
+        obj2.insert("usr",group_id);
+        obj2.insert("type","group");
+        QJsonArray arr;
+        arr.insert(0,obj2);
+        QJsonObject all_obj;
+        all_obj.insert("relations",arr);
+        QJsonDocument doc(all_obj);
+        msocket->write(doc.toJson());
+    }
+    model->setTable(table);
+    model->setFilter("");
+    model->select();
+}
+
+void MainWindow::register_usr(QJsonObject obj)
+{
+    QJsonObject obj1 = obj.value("register_info").toObject();
+    QString name = obj1.value("name").toString();
+    QString usr = obj1.value("usr").toString();
+    QString pwd = obj1.value("pwd").toString();
+    model->setTable("user");
+    model->setFilter(QString("usr = '%1'").arg(usr));
+    model->select();
+    if(model->rowCount()>0)
+    {
+        QJsonObject obj2;
+        obj2.insert("register_result","no");
+        QJsonDocument doc(obj2);
+        msocket->write(doc.toJson());
+    }
+    else
+    {
+        QSqlRecord record =  model->record(0);
+        record.setValue("name",name);
+        record.setValue("usr",usr);
+        record.setValue("pwd",pwd);
+        model->insertRecord(0,record);
+        model->setTable("relations");
+        model->setFilter("");
+        model->select();
+        QSqlRecord record1 =  model->record(0);
+        record1.setValue("name1","系统聊天室");
+        record1.setValue("usr1","00000001");
+        record1.setValue("name2",name);
+        record1.setValue("usr2",usr);
+        record1.setValue("type","group");
+        model->insertRecord(0,record1);
+        model->setTable("groups");
+        model->setFilter(QString("group_id = '00000001'"));
+        model->select();
+        QSqlRecord record2 =  model->record(0);
+        int n = record2.value("members").toInt()+1;
+        record2.setValue("members",n);
+        model->setRecord(0,record2);
+        QJsonObject obj2;
+        obj2.insert("register_result","yes");
+        QJsonDocument doc(obj2);
+        msocket->write(doc.toJson());
+    }
+}
+
+void MainWindow::init_current_style()
+{
+    qDebug()<<"123";
+    QFile qFile(":/qrcs/qss/blue.css");
+    qFile.open(QFile::ReadOnly); // 读取qss文件，设置样式
+    if (qFile.isOpen())
+    {
+        QString qss = qFile.readAll();
+        this->setStyleSheet(qss);
+    }
+    else
+    {
+        qDebug()<<"错误";
+    }
+    qFile.close();
+
+}
+static bool max = false;
+static QRect location;
+void MainWindow::on_pushButton_closeWin_clicked()
+{
+    close();
+}
+
+void MainWindow::on_pushButton_maxWin_clicked()
+{
+
+    if(max)
+    {
+        this->setProperty("canMove",true);
+        this->setGeometry(location);
+        ui->pushButton_maxWin->setToolTip("放大");
+        IconHelper::Instance()->setIcon(ui->pushButton_maxWin, QChar(0xF2D0));
+        max = false;
+    }
+    else
+    {
+        this->setProperty("canMove",false);
+        ui->pushButton_maxWin->setToolTip("缩小");
+        location = geometry();
+        this->setGeometry( QApplication::desktop()->availableGeometry());
+        IconHelper::Instance()->setIcon(ui->pushButton_maxWin, QChar(0xF2D2));
+        max = true;
+    }
+}
+
+void MainWindow::on_pushButton_minWin_clicked()
+{
+    showMinimized();
+}

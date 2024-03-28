@@ -25,9 +25,12 @@ DEFINES += QT_DEPRECATED_WARNINGS
 CONFIG += c++11
 
 SOURCES += \
+    quiwidget.cpp \
+    appinit.cpp \
     main.cpp \
     mainwindow.cpp \
     my_tasks.cpp \
+    my_tcp.cpp \
     user_win.cpp \
     disdeal_message_win.cpp \
     group_win.cpp \
@@ -36,8 +39,12 @@ SOURCES += \
     usr_info.cpp
 
 HEADERS += \
+    head.h \
+    quiwidget.h \
+    appinit.h \
     mainwindow.h \
     my_tasks.h \
+    my_tcp.h \
     user_win.h \
     disdeal_message_win.h \
     group_win.h \
@@ -57,3 +64,6 @@ FORMS += \
 qnx: target.path = /tmp/$${TARGET}/bin
 else: unix:!android: target.path = /opt/$${TARGET}/bin
 !isEmpty(target.path): INSTALLS += target
+
+RESOURCES += \
+    pic.qrc

@@ -10,6 +10,7 @@
 #include "relations.h"
 #include "infomation.h"
 #include "usr_info.h"
+#include "quiwidget.h"
 
 //数据库头文件
 #include <QSqlDatabase>
@@ -31,7 +32,7 @@
 #include <QJsonParseError>
 
 #include <QThreadPool>
-
+#include <QFile>
 
 //容器头文件
 #include <QSet>
@@ -75,6 +76,24 @@ public:
 
     void relation_select(QString sender,QString recver);
 
+    //消息处理函数
+    void usr_login(QJsonObject obj);
+    void MtoFriend(QJsonObject obj);
+    void MtoGroup(QJsonObject obj);
+    void switch_init(QJsonObject obj);
+    void offline_data(QJsonObject obj);
+    void add_relation(QJsonObject obj);
+    void create_group(QJsonObject obj);
+    void register_usr(QJsonObject obj);
+
+    void init_current_style();
+
+
+    void on_pushButton_closeWin_clicked();
+
+    void on_pushButton_maxWin_clicked();
+
+    void on_pushButton_minWin_clicked();
 
 private:
     Ui::MainWindow *ui;
